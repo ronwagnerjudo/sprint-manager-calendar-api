@@ -1,8 +1,7 @@
 from flask import Flask, jsonify, request
 from google_apis import create_service
 from datetime import datetime, timedelta
-import requests
-from pprint import pprint
+
 
 CLIENT_SECRET_FILE = "client_secret.json"
 SCOPS = "https://www.googleapis.com/auth/calendar"
