@@ -1,31 +1,22 @@
 from flask import Flask, jsonify, request
 from google_apis import create_service
 from datetime import datetime, timedelta
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+GOOGLE_CLIENT_SECRET_FILE = "client_secret.json"
+GOOGLE_SCOPS = "https://www.googleapis.com/auth/calendar"
+GOOGLE_API_VERSION = "v3"
+GOOGLE_API_NAME = "calendar"
 
 
-CLIENT_SECRET_FILE = "client_secret.json"
-SCOPS = "https://www.googleapis.com/auth/calendar"
-API_VERSION = "v3"
-API_NAME = "calendar"
+service = create_service(GOOGLE_CLIENT_SECRET_FILE, GOOGLE_API_NAME, GOOGLE_API_VERSION, GOOGLE_SCOPS)
 
-
-service = create_service(CLIENT_SECRET_FILE, API_NAME, API_VERSION, SCOPS)
-
-today = datetime.today()
-after_14_days = today + timedelta(days=14)
-
-body = {
-  "timeMin": f"{today.isoformat()}Z",
-  "timeMax": f"{after_14_days.isoformat()}Z",
-  "timeZone": 'Asia/Jerusalem',
-  "items": [
-    {
-      "id": "primary"
-    }
-  ]
-}
+#------------------------------------------FUNCTIONS---------------------------------------------------
 
 def get_event_id(event_name):
+  today = datetime.today()
   events = service.events().list(calendarId='primary', timeMin=f"{today.isoformat()}Z").execute()
   for i in range(len(events)):
    for e in events["items"][i]:
@@ -34,7 +25,19 @@ def get_event_id(event_name):
 
 
 def find_first_open_slot(start_time, end_time, duration):
+  today = datetime.today()
+  after_14_days = today + timedelta(days=14)
 
+  body = {
+    "timeMin": f"{today.isoformat()}Z",
+    "timeMax": f"{after_14_days.isoformat()}Z",
+    "timeZone": 'Asia/Jerusalem',
+    "items": [
+      {
+        "id": "primary"
+      }
+    ]
+  }
   def datetime_to_string(time):
     return datetime.strftime(time, '%Y-%m-%dT%H:%M:%S')
 
@@ -68,6 +71,7 @@ def find_first_open_slot(start_time, end_time, duration):
   return None
 
 def find_availble_day(duration):
+  today = datetime.today()
   for d in range(14):
     start_day_time = today + timedelta(days=d)
 
@@ -90,7 +94,7 @@ def find_availble_day(duration):
     if find_first_open_slot(datetime_s_time, datetime_e_time, duration) != None:
       return find_first_open_slot(datetime_s_time, datetime_e_time, duration)
     
-
+#-----------------------------------------APP--------------------------------------------------
 
 app = Flask(__name__)
 
@@ -99,31 +103,42 @@ def create_new_task():
     user_name = request.form.get("username")
     task_name = request.form.get("task_name")
     task_time = request.form.get("task_time")
-    
-    start_time = find_availble_day(task_time)
-    end_time = start_time + timedelta(hours=task_time)
+    logging.INFO("getting data from the task-api")
 
-    event = {
-      'summary': task_name,
-      'start': {
-        'dateTime': start_time,
-        'timeZone': 'Asia/Jerusalem',
-      },
-      'end': {
-        'dateTime': end_time,
-        'timeZone': 'Asia/Jerusalem',
+    if user_name != "" or task_name != "" or task_time != "":
+    
+      start_time = find_availble_day(task_time)
+      end_time = start_time + timedelta(hours=task_time)
+
+      event = {
+        'summary': task_name,
+        'start': {
+          'dateTime': start_time,
+          'timeZone': 'Asia/Jerusalem',
+        },
+        'end': {
+          'dateTime': end_time,
+          'timeZone': 'Asia/Jerusalem',
+        }
       }
-    }
-    event = service.events().insert(calendarId='primary', body=event).execute()
-    return jsonify(event = {'summary': task_name, 'start': {'dateTime': start_time,'timeZone': 'Asia/Jerusalem',}, 'end': {'dateTime': end_time,'timeZone': 'Asia/Jerusalem',}}), 200
+
+      logging.INFO("create connection with google and insert new event to the google calendar")
+      event = service.events().insert(calendarId='primary', body=event).execute()
+      logging.INFO("new event inserted")
+      return jsonify(event = {'summary': task_name, 'start': {'dateTime': start_time,'timeZone': 'Asia/Jerusalem',}, 'end': {'dateTime': end_time,'timeZone': 'Asia/Jerusalem',}}), 200
+    
+    else:
+      return jsonify(error={"Not valid": "Sorry, but input/s left empty."}), 404
 
 @app.route("/update", methods=["PUT"])
 def update_task():
   user_name = request.form.get("username")
   task_name = request.form.get("task_name")
   task_time = request.form.get("task_time")
+  logging.INFO("getting data from the task-api")
 
   event_id = get_event_id(task_name)
+  logging.INFO("retrieve event to update from the google calendar")
   update_event = service.events().get(calendarId='primary', eventId=event_id).execute()
 
   if find_availble_day(task_time) != None:
@@ -139,7 +154,9 @@ def update_task():
           'dateTime': end_time,
           'timeZone': 'Asia/Jerusalem',
         }
+    logging.INFO("create connection with google and update event in the google calendar")
     update_event = service.events().update(calendarId='primary', eventId=update_event['id'], body=update_event).execute()
+    logging.INFO("event updated")
     return jsonify(event = {'summary': task_name, 'start': {'dateTime': start_time,'timeZone': 'Asia/Jerusalem',}, 'end': {'dateTime': end_time,'timeZone': 'Asia/Jerusalem',}}), 200
 
   else:
@@ -149,9 +166,14 @@ def update_task():
 @app.route("/delete", methods=["DELETE"])
 def delete_task():
   task_name = request.form.get("task_name")
+  logging.INFO("getting data from the task-api")
+
   event_id = get_event_id(task_name)
+
+  logging.INFO("create connection with google and delete event in the google calendar")
   service.events().delete(calendarId='primary', eventId=event_id).execute()
-  return jsonify({""})
+  logging.INFO("event deleted")
+  return jsonify(task_name = {"event deleted"}), 200
 
 
 if __name__ =="__main__":
