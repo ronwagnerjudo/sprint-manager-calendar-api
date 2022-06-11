@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
-from google_apis import create_service
+from googleapiclient.discovery import build
 from datetime import datetime, timedelta
+import requests
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -11,7 +12,10 @@ GOOGLE_API_VERSION = "v3"
 GOOGLE_API_NAME = "calendar"
 
 
-service = create_service(GOOGLE_CLIENT_SECRET_FILE, GOOGLE_API_NAME, GOOGLE_API_VERSION, GOOGLE_SCOPS)
+response = requests.get("https://127.0.0.1:5000//login/callback")
+credentials = response
+
+service = build(GOOGLE_API_NAME, GOOGLE_API_VERSION, credentials=credentials)
 
 #------------------------------------------FUNCTIONS---------------------------------------------------
 
