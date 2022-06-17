@@ -4,6 +4,7 @@ from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 import requests
 import logging
+from functools import wraps
 
 logging.basicConfig(level=logging.INFO)
 
@@ -11,28 +12,41 @@ GOOGLE_API_VERSION = "v3"
 GOOGLE_API_NAME = "calendar"
 
 
-response = requests.get("https://127.0.0.1:5000//login/callback")
-credentials = response.json()["credentials"]
-
-service = build(GOOGLE_API_NAME, GOOGLE_API_VERSION, credentials=credentials)
-
 #------------------------------------------APP CONFIG-------------------------------------------------
 
 app = Flask(__name__)
 app.secret_key = os.urandom(12).hex()
 
+#----------------------------------------------------------------------------
+def authentication(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        try: 
+            response = requests.get("https://127.0.0.1:5000/get-credentials")
+            data = response.json()
+            current_user_credentials = data["user_credentials"]
+        except:
+            return jsonify({"message" : "Couldn't get the credentials!"}), 401
+
+        return f(current_user_credentials, *args, **kwargs)
+
+    return decorated
+
 #------------------------------------------FUNCTIONS---------------------------------------------------
 
-def get_event_id(event_name):
-  today = datetime.today()
-  events = service.events().list(calendarId='primary', timeMin=f"{today.isoformat()}Z").execute()
-  for i in range(len(events)):
-   for e in events["items"][i]:
-     if e["summary"] == event_name:
-       return e["id"]
+# def get_event_id(event_name):
+#   today = datetime.today()
+#   events = service.events().list(calendarId='primary', timeMin=f"{today.isoformat()}Z").execute()
+#   for i in range(len(events)):
+#    for e in events["items"][i]:
+#      if e["summary"] == event_name:
+#        return e["id"]
 
+def create_service(credentials):
+  service = build(GOOGLE_API_NAME, GOOGLE_API_VERSION, credentials=credentials)
+  return service
 
-def find_first_open_slot(start_time, end_time, duration):
+def find_first_open_slot(start_time, end_time, duration, service):
   today = datetime.today()
   after_14_days = today + timedelta(days=14)
 
@@ -78,7 +92,7 @@ def find_first_open_slot(start_time, end_time, duration):
   #If no suitable gaps are found, return none.
   return None
 
-def find_availble_day(duration):
+def find_availble_day(duration, service):
   today = datetime.today()
   for d in range(14):
     start_day_time = today + timedelta(days=d)
@@ -99,20 +113,24 @@ def find_availble_day(duration):
     e_time = f"{start_day_time.year}-{month}-{day}T19:00:00"
     datetime_e_time = datetime.strptime(e_time, '%Y-%m-%dT%H:%M:%S')
 
-    if find_first_open_slot(datetime_s_time, datetime_e_time, duration) != None:
-      return find_first_open_slot(datetime_s_time, datetime_e_time, duration)
+    if find_first_open_slot(datetime_s_time, datetime_e_time, duration, service) != None:
+      return find_first_open_slot(datetime_s_time, datetime_e_time, duration, service)
+
     
 #-----------------------------------------APP--------------------------------------------------
 
 @app.route("/new_task", methods=["GET", "POST"])
-def create_new_task():
+@authentication
+def create_new_task(current_user_credentials):
+    service = create_service(credentials=current_user_credentials)
+
     task_name = request.form.get("task_name")
     task_time = request.form.get("task_time")
     logging.INFO("getting data from the task-api")
 
     if task_name != "" or task_time != "":
     
-      start_time = find_availble_day(task_time)
+      start_time = find_availble_day(task_time, service)
       end_time = start_time + timedelta(hours=task_time)
 
       event = {
@@ -130,13 +148,17 @@ def create_new_task():
       logging.INFO("create connection with google and insert new event to the google calendar")
       event = service.events().insert(calendarId='primary', body=event).execute()
       google_event_id = event["id"]
+      google_event_starttime = event["start"]["date"]
       logging.INFO("new event inserted")
-      return jsonify(event = {'summary': task_name, 'start': {'dateTime': start_time,'timeZone': 'Asia/Jerusalem',}, 'end': {'dateTime': end_time,'timeZone': 'Asia/Jerusalem',}, 'googleEventId': google_event_id}), 200
+      return jsonify(event = {'summary': task_name, 'start': {'dateTime': start_time,'timeZone': 'Asia/Jerusalem',}, 'end': {'dateTime': end_time,'timeZone': 'Asia/Jerusalem',}, 'googleEventId': google_event_id, "eventStartDate": google_event_starttime}), 200
     else:
       return jsonify(error={"Not valid": "Sorry, but input/s left empty."}), 404
 
 @app.route("/update", methods=["PUT"])
-def update_task():
+@authentication
+def update_task(current_user_credentials):
+  service = create_service(credentials=current_user_credentials)
+
   task_name = request.form.get("task_name")
   task_time = request.form.get("task_time")
   google_event_id = request.form.get("googleEventId")
@@ -147,7 +169,7 @@ def update_task():
   update_event = service.events().get(calendarId='primary', eventId=google_event_id).execute()
 
   if find_availble_day(task_time) != None:
-    start_time = find_availble_day(task_time)
+    start_time = find_availble_day(task_time, service)
     end_time = start_time + timedelta(hours=task_time)
 
     update_event['summary'] = task_name
@@ -169,7 +191,10 @@ def update_task():
 
 
 @app.route("/delete", methods=["DELETE"])
-def delete_task():
+@authentication
+def delete_task(current_user_credentials):
+  service = create_service(credentials=current_user_credentials)
+
   # task_name = request.form.get("task_name")
   google_event_id = request.form.get("googleEventId")
   logging.INFO("getting data from the task-api")
@@ -183,7 +208,7 @@ def delete_task():
 
 
 if __name__ =="__main__":
-    app.run(debug=True, port=8080)
+    app.run(debug=True, port=8080, ssl_context='adhoc')
 
 
 
