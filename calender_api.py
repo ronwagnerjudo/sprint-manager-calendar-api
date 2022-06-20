@@ -34,87 +34,110 @@ def authentication(f):
 
 #------------------------------------------FUNCTIONS---------------------------------------------------
 
-# def get_event_id(event_name):
-#   today = datetime.today()
-#   events = service.events().list(calendarId='primary', timeMin=f"{today.isoformat()}Z").execute()
-#   for i in range(len(events)):
-#    for e in events["items"][i]:
-#      if e["summary"] == event_name:
-#        return e["id"]
-
 def create_service(credentials):
   service = build(GOOGLE_API_NAME, GOOGLE_API_VERSION, credentials=credentials)
   return service
 
-def find_first_open_slot(start_time, end_time, duration, service):
-  today = datetime.today()
-  after_14_days = today + timedelta(days=14)
+def find_open_slot(start_time, end_time, duration, service, preference):
 
-  body = {
-    "timeMin": f"{today.isoformat()}Z",
-    "timeMax": f"{after_14_days.isoformat()}Z",
-    "timeZone": 'Asia/Jerusalem',
-    "items": [
-      {
-        "id": "primary"
-      }
-    ]
-  }
-  def datetime_to_string(time):
-    return datetime.strftime(time, '%Y-%m-%dT%H:%M:%S')
+    body = {
+      "timeMin": f"{start_time}Z",
+      "timeMax": f"{end_time}Z",
+      "timeZone": 'Asia/Jerusalem',
+      "items": [
+        {
+          "id": "primary"
+        }
+      ]
+   }
+    def datetime_to_string(time):
+      return datetime.strftime(time, '%Y-%m-%dT%H:%M:%S')
 
-  def parse_date(raw_date):
-    #Transform the datetime given by the API to a python datetime object.
-    formated_date = raw_date.split("+")[0]
-    return datetime.strptime(formated_date, '%Y-%m-%dT%H:%M:%S')
+    def parse_date(raw_date):
+      #Transform the datetime given by the API to a python datetime object.
+      formated_date = raw_date.split("+")[0]
+      return datetime.strptime(formated_date, '%Y-%m-%dT%H:%M:%S')
   
-  get_events_date = service.freebusy().query(body=body).execute()
-  event_starts = [parse_date(e['start']) for e in get_events_date["calendars"]["primary"]["busy"]]
-  event_ends = [parse_date(e['end']) for e in get_events_date["calendars"]["primary"]["busy"]]
+    get_events_date = service.freebusy().query(body=body).execute()
+    event_starts = [parse_date(e['start']) for e in get_events_date["calendars"]["primary"]["busy"]]
+    event_ends = [parse_date(e['end']) for e in get_events_date["calendars"]["primary"]["busy"]]
     
-  gaps = [start-end for (start,end) in zip(event_starts[1:], event_ends[:-1])]
+    gaps = [start-end for (start,end) in zip(event_starts[1:], event_ends[:-1])]
 
-  if start_time + duration < event_starts[0]:
+    #First checking if the day is empty or not, if so then schedule according to preference.
+    if get_events_date == []:
+      if preference == "morning":
+        return datetime_to_string(start_time)
+      elif preference == "afternoon":
+        enday_gap = end_time - duration
+        return datetime_to_string(enday_gap)
+      else:
+        return datetime_to_string(start_time)
+
+
+    if end_time > event_ends[:-1]:
+      #If there's a gap between the end of the last event and end time.
+      enday_gap = end_time - event_ends[:-1]
+      gaps.append(enday_gap)
+
+    if preference == "morning":
+      if start_time + duration < event_starts[0]:
       #A slot is open at the start of the desired window.
-      return datetime_to_string(start_time)
+        return datetime_to_string(start_time)
+      for i, gap in enumerate(gaps):
+        if gap > duration:
+          if event_ends[i].hour + duration <= 12:
+            return datetime_to_string(event_ends[i])
+      return None
     
-  if end_time > event_ends[:-1]:
-    #If there's a gap between the end of the last event and end time.
-    enday_gap = end_time - event_ends[:-1]
-    gaps.append(enday_gap)
+    if preference == "afternoon":
+      for i, gap in enumerate(gaps):
+        if gap > duration:
+          if 15 < event_ends[i].hour + duration <= end_time:
+            return datetime_to_string(event_ends[i])
+      return None
+        
 
-  for i, gap in enumerate(gaps):
-    if gap > duration:
-      #This means that a gap is bigger than the desired slot duration, and we can "squeeze" a meeting.
-      #Just after that meeting ends.
-      return datetime_to_string(event_ends[i])
+    if start_time + duration < event_starts[0]:
+        #A slot is open at the start of the desired window.
+        return datetime_to_string(start_time)
+    
 
-  #If no suitable gaps are found, return none.
-  return None
+    for i, gap in enumerate(gaps):
+      if gap > duration:
+        #This means that a gap is bigger than the desired slot duration, and we can "squeeze" a meeting.
+        #Just after that meeting ends.
+        return datetime_to_string(event_ends[i])
 
-def find_availble_day(duration, service):
-  today = datetime.today()
-  for d in range(14):
-    start_day_time = today + timedelta(days=d)
+    #If no suitable gaps are found, return none.
+    return None
 
-    if start_day_time.strftime("%A") == "Friday" or start_day_time.strftime("%A") == "Saturday":
-      continue
+def find_availble_day(duration, service, preference, sprint_time, start_work_hours, end_work_hours):
+    """Find an open slot in the google calendar according to the user preference, duration of the event/task,
+     working hours and until when to look for (in days). using the find_open_slot() function"""
 
-    if start_day_time.month < 10:
-      month = f"0{start_day_time.month}"
-    else:
-      month = start_day_time.month
-    if start_day_time.day < 10:
-      day = f"0{start_day_time.day}"
-    else:
-      day = start_day_time.day
-    s_time = f"{start_day_time.year}-{month}-{day}T09:00:00"
-    datetime_s_time = datetime.strptime(s_time, '%Y-%m-%dT%H:%M:%S')
-    e_time = f"{start_day_time.year}-{month}-{day}T19:00:00"
-    datetime_e_time = datetime.strptime(e_time, '%Y-%m-%dT%H:%M:%S')
+    today = datetime.today()
+    for d in range(sprint_time):
+      start_day_time = today + timedelta(days=d + 1)
 
-    if find_first_open_slot(datetime_s_time, datetime_e_time, duration, service) != None:
-      return find_first_open_slot(datetime_s_time, datetime_e_time, duration, service)
+      if start_day_time.strftime("%A") == "Friday" or start_day_time.strftime("%A") == "Saturday":
+        continue
+
+      if start_day_time.month < 10:
+        month = f"0{start_day_time.month}"
+      else:
+        month = start_day_time.month
+      if start_day_time.day < 10:
+        day = f"0{start_day_time.day}"
+      else:
+        day = start_day_time.day
+        s_time = f"{start_day_time.year}-{month}-{day}T{start_work_hours}:00:00"
+        datetime_s_time = datetime.strptime(s_time, '%Y-%m-%dT%H:%M:%S')
+        e_time = f"{start_day_time.year}-{month}-{day}T{end_work_hours}:00:00"
+        datetime_e_time = datetime.strptime(e_time, '%Y-%m-%dT%H:%M:%S')
+
+      if find_open_slot(datetime_s_time, datetime_e_time, duration, service, preference) != None:
+        return find_open_slot(datetime_s_time, datetime_e_time, duration, service, preference)
 
     
 #-----------------------------------------APP--------------------------------------------------
