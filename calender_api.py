@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, json
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from datetime import datetime, timedelta
@@ -25,9 +25,17 @@ app.secret_key = os.urandom(12).hex()
 def user_details(f):
 	@wraps(f)
 	def decorated(*args, **kwargs):
+		token = None
+  
+		if request.cookies.get("jwt"):
+			token = request.cookies.get("jwt")
+
+		if not token:
+			return jsonify({'message' : 'Token is missing!'}), 401
+
 		try: 
-			response = requests.get("http://127.0.0.1:5000/get-user-details")
-			data = response.json()
+			response = requests.get("http://127.0.0.1:5000/get-user-details", cookies=request.cookies)
+			data = response.json()['user_details']
 			creds = data["userCredentials"]
 			current_user_credentials = Credentials.from_authorized_user_info(creds, GOOGLE_SCOPES)
 			user_preference = data["userPreference"]
@@ -164,17 +172,19 @@ def find_availble_day(duration, service, preference, sprint_time, start_work_hou
 def create_new_task(current_user_credentials, user_preference, user_sprint_time, user_start_work, user_end_work):
 	service = build(GOOGLE_API_NAME, GOOGLE_API_VERSION, credentials=current_user_credentials)
 
-	task_name = request.form.get("task_name")
-	task_time = request.form.get("task_time")
-	logging.INFO("getting data from the task-api")
+	data = json.loads(request.data)
+
+	task_name = data["task_name"]
+	task_time = data["task_time"]
+	logging.info("getting data from the task-api")
 
 	if task_name != "" or task_time != "":
 	
-		start_time = find_availble_day(task_time, service, preference=user_preference, sprint_time=user_sprint_time, start_work_hours=user_start_work, end_work_hours=user_end_work)
+		start_time = find_availble_day(int(task_time), service, preference=user_preference, sprint_time=user_sprint_time, start_work_hours=user_start_work, end_work_hours=user_end_work)
 		if start_time == None:
 			return jsonify({"error": "Sorry, but couldn't find availble time"}), 404
 
-		end_time = start_time + timedelta(hours=task_time)
+		end_time = parse_date(start_time) + timedelta(hours=int(task_time))
 
 		event = {
 		  'summary': task_name,
@@ -183,16 +193,16 @@ def create_new_task(current_user_credentials, user_preference, user_sprint_time,
 			'timeZone': 'Asia/Jerusalem',
 		  },
 		  'end': {
-			'dateTime': end_time,
+			'dateTime': datetime_to_string(end_time),
 			'timeZone': 'Asia/Jerusalem',
 		  }
 		}
 
-		logging.INFO("create connection with google and insert new event to the google calendar")
+		logging.info("create connection with google and insert new event to the google calendar")
 		event = service.events().insert(calendarId='primary', body=event).execute()
 		google_event_id = event["id"]
-		google_event_starttime = event["start"]["date"]
-		logging.INFO("new event inserted")
+		google_event_starttime = event["start"]["dateTime"]
+		logging.info("new event inserted")
 		return jsonify(event = {'summary': task_name, 'start': {'dateTime': start_time,'timeZone': 'Asia/Jerusalem',}, 'end': {'dateTime': end_time,'timeZone': 'Asia/Jerusalem',}, 'googleEventId': google_event_id, "eventStartDate": google_event_starttime}), 200
 	else:
 		return jsonify(error={"Not valid": "Sorry, but input/s left empty."}), 404
@@ -205,10 +215,10 @@ def update_task(current_user_credentials, user_preference, user_sprint_time, use
 	task_name = request.form.get("task_name")
 	task_time = request.form.get("task_time")
 	google_event_id = request.form.get("googleEventId")
-	logging.INFO("getting data from the task-api")
+	logging.info("getting data from the task-api")
 
 	# event_id = get_event_id(task_name)
-	logging.INFO("retrieve event to update from the google calendar")
+	logging.info("retrieve event to update from the google calendar")
 	update_event = service.events().get(calendarId='primary', eventId=google_event_id).execute()
 
 
@@ -227,25 +237,26 @@ def update_task(current_user_credentials, user_preference, user_sprint_time, use
 		'dateTime': end_time,
 		'timeZone': 'Asia/Jerusalem',
 		}
-	logging.INFO("create connection with google and update event in the google calendar")
+	logging.info("create connection with google and update event in the google calendar")
 	update_event = service.events().update(calendarId='primary', eventId=update_event['id'], body=update_event).execute()
-	logging.INFO("event updated")
+	logging.info("event updated")
 	return jsonify(event = {'summary': task_name, 'start': {'dateTime': start_time,'timeZone': 'Asia/Jerusalem',}, 'end': {'dateTime': end_time,'timeZone': 'Asia/Jerusalem',}}), 200
 
 
 
 @app.route("/delete", methods=["DELETE"])
 @user_details
-def delete_task(current_user_credentials):
+def delete_task(current_user_credentials, user_preference, user_sprint_time, user_start_work, user_end_work):
 	service = build(GOOGLE_API_NAME, GOOGLE_API_VERSION, credentials=current_user_credentials)
 
-	google_event_id = request.form.get("googleEventId")
-	logging.INFO("getting data from the task-api")
+	data = json.loads(request.data)
+	google_event_id = data["googleEventId"]
+	logging.info("getting data from the task-api")
 
-	logging.INFO("create connection with google and delete event in the google calendar")
+	logging.info("create connection with google and delete event in the google calendar")
 	service.events().delete(calendarId='primary', eventId=google_event_id).execute()
-	logging.INFO("event deleted")
-	return jsonify(task_name = {"event deleted"}), 200
+	logging.info("event deleted")
+	return jsonify({"hi": "event deleted"}), 200
 
 
 if __name__ =="__main__":
