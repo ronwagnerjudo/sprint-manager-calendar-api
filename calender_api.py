@@ -26,7 +26,7 @@ def user_details(f):
 	@wraps(f)
 	def decorated(*args, **kwargs):
 		try: 
-			response = requests.get("https://127.0.0.1:5000/get-user-details")
+			response = requests.get("http://127.0.0.1:5000/get-user-details")
 			data = response.json()
 			creds = data["userCredentials"]
 			current_user_credentials = Credentials.from_authorized_user_info(creds, GOOGLE_SCOPES)
