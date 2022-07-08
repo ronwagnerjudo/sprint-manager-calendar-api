@@ -171,6 +171,7 @@ def find_availble_day(duration, service, preference, user_sprint_start_date, use
         sprint_time = calculate_sprint_time(sprint_start_date, sprint_end_date)
         
     for d in range(sprint_time):
+        sprint_start_date = sprint_start_date + timedelta(days=d)
 
         if sprint_start_date.strftime("%A") == "Friday" or sprint_start_date.strftime("%A") == "Saturday":
             continue
