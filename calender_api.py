@@ -14,6 +14,7 @@ GOOGLE_API_NAME = "calendar"
 GOOGLE_SCOPES = ['openid', 'https://www.googleapis.com/auth/calendar', 
         'https://www.googleapis.com/auth/userinfo.email', 
         'https://www.googleapis.com/auth/userinfo.profile']
+USER_API_URL = os.getenv("CALENDER_API_URL", "http://127.0.0.1:5000")
 
 
 #------------------------------------------APP CONFIG-------------------------------------------------
@@ -36,7 +37,7 @@ def user_details(f):
             return jsonify({'message' : 'Token is missing!'}), 401
 
         try: 
-            response = requests.get("http://127.0.0.1:5000/get-user-details", cookies=request.cookies)
+            response = requests.get(f"{USER_API_URL}/get-user-details", cookies=request.cookies)
             logging.info("Sent get request to user api")
         except:
             logging.info("Problem with the get-user-details response")
