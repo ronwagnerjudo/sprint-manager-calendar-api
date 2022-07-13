@@ -1,2 +1,5 @@
 Flask==2.1.1
 google-api-python-client==2.47.0
+logging==0.5.1.2
+json==2.0.9
+requests==2.27.1
