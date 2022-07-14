@@ -162,8 +162,6 @@ def find_availble_day(duration, service, preference, user_sprint_start_date, use
      working hours and until when to look for (in days). using the find_open_slot() function"""
 
     if user_sprint_start_date == "":
-        user_sprint_start_date = datetime.today() + timedelta(days=1)
-        sprint_start_date = user_sprint_start_date
         sprint_time = 14
     
     else:
@@ -172,7 +170,11 @@ def find_availble_day(duration, service, preference, user_sprint_start_date, use
         sprint_time = calculate_sprint_time(sprint_start_date, sprint_end_date)
         
     for d in range(sprint_time):
-        sprint_start_date = sprint_start_date + timedelta(days=d)
+        if user_sprint_start_date == "":
+            sprint_start_date = datetime.today() + timedelta(days=1)
+        sprint_start_date += timedelta(days=d) 
+
+        print(sprint_start_date.strftime("%A"))
 
         if sprint_start_date.strftime("%A") == "Friday" or sprint_start_date.strftime("%A") == "Saturday":
             continue
@@ -191,6 +193,10 @@ def find_availble_day(duration, service, preference, user_sprint_start_date, use
 
         if open_slot != None:
             return open_slot
+
+            
+
+            
 
     
 #-----------------------------------------APP--------------------------------------------------
