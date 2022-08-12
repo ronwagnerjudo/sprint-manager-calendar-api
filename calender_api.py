@@ -37,7 +37,7 @@ def user_details(f):
             return jsonify({'message' : 'Token is missing!'}), 401
 
         try: 
-            response = requests.get(f"{USER_API_URL}/get-user-details", cookies=request.cookies)
+            response = requests.get(f"{USER_API_URL}/get-user-private-details", cookies=request.cookies)
             logging.info("Sent get request to user api")
         except:
             logging.info("Problem with the get-user-details response")
@@ -161,20 +161,12 @@ def find_availble_day(duration, service, preference, user_sprint_start_date, use
 	"""Find availble day and an open slot in the google calendar according to the user preference, duration of the event/task,
 	 working hours and until when to look for (in days). using the find_open_slot() function"""
 
-	if user_sprint_start_date == "":
-		sprint_time = 14
-    
-	else:
-		sprint_start_date = parse_sprint_date(user_sprint_start_date)
-		sprint_end_date = parse_sprint_date(user_sprint_end_date)
-		sprint_time = calculate_sprint_time(sprint_start_date, sprint_end_date)
+	sprint_start_date = parse_sprint_date(user_sprint_start_date)
+	sprint_end_date = parse_sprint_date(user_sprint_end_date)
+	sprint_time = calculate_sprint_time(sprint_start_date, sprint_end_date)
         
 	for d in range(sprint_time):
-		if user_sprint_start_date == "":
-			sprint_start_date = datetime.today() + timedelta(days=1)
 		sprint_start_date += timedelta(days=d) 
-
-		print(sprint_start_date.strftime("%A"))
 
 		if sprint_start_date.strftime("%A") == "Friday" or sprint_start_date.strftime("%A") == "Saturday":
 			continue
@@ -193,10 +185,6 @@ def find_availble_day(duration, service, preference, user_sprint_start_date, use
 
 		if open_slot != None:
 		    return open_slot
-
-
-
-
 
 
 #-----------------------------------------APP--------------------------------------------------
