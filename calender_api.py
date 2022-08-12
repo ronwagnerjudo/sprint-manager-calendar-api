@@ -37,7 +37,7 @@ def user_details(f):
             return jsonify({'message' : 'Token is missing!'}), 401
 
         try: 
-            response = requests.get(f"{USER_API_URL}/get-user-private-details", cookies=request.cookies)
+            response = requests.get(f"{USER_API_URL}/get-user-details", cookies=request.cookies)
             logging.info("Sent get request to user api")
         except:
             logging.info("Problem with the get-user-details response")
